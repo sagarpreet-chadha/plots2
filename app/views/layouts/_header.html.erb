@@ -52,10 +52,6 @@
             <li><a href="/chat">Chat online</a></li>
             <li><a href="/wiki/requests">Browse requests</a></li>
             <li><a href="/dashboard">See the latest research</a></li>
-            <li><a href="/methods">Discover methods</a></li>
-            <% if !current_user %>
-              <li><a href="/signup">Create an account</a></li>
-            <% end %>
             <li><a href="/questions">Ask a question</a></li>
             <li><a href="/post">Post your work</a></li>
           </ul>
@@ -130,13 +126,13 @@
               <li><a href="/subscriptions"><%= t('layout._header.subscriptions') %></a></li>
               <li><a href="/profile/<%= current_user.username %>/likes"><%= t('layout._header.notes_liked') %></a></li>
               <li class="divider"></li>
-	       <% if current_user.role == 'admin' %>
+         <% if current_user.role == 'admin' %>
     <li><a href="/useremail">Email search</a></li>
     <li><a href="/wiki/locked">Locked pages</a></li>
     <li><a href="/spam">Spam moderation</a></li>
     <li><a href="/people">Contributors</a></li>
-	           <li class="divider"></li>
-	       <% end %>
+             <li class="divider"></li>
+         <% end %>
               <li><%= link_to t('layout._header.logout'), logout_path %></li>
               <li><a href="/logoutRemotely">Logout from all devices</a></li>
             </ul>
