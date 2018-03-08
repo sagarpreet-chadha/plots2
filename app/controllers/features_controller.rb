@@ -3,11 +3,11 @@ class FeaturesController < ApplicationController
 
   def index
     @features = Node.where(type: 'feature')
-                    .paginate(page: params[:page])
+      .paginate(page: params[:page])
   end
 
   def embed
-    @node = Node.find_by_title params[:id]
+    @node = Node.find_by(title: params[:id])
     render layout: false
   end
 
@@ -78,7 +78,7 @@ class FeaturesController < ApplicationController
           @node.title = @revision.title
           @node.save
         end
-        expire_fragment("feature_#{params[:title]}")
+        ActionController::Base.new.expire_fragment("feature_#{params[:title]}")
         flash[:notice] = 'Edits saved and cache cleared.'
         redirect_to '/features?_=' + Time.now.to_i.to_s
       else

@@ -11,22 +11,43 @@ class HomeControllerTest < ActionController::TestCase
   end
 
   test 'should get home' do
+    title = I18n.t('home_controller.science_community')
+
     get :home
+    assert_response :success
+    assert_select "title", "&#127880; Public Lab: #{title}"
+  end
 
+  test 'home should redirect to dashboard if logged in' do
+    UserSession.create(users(:bob))
+
+    get :home
+    assert_redirected_to dashboard_url
+  end
+
+  test 'should get research if not logged by /dashboard' do
+    get :dashboard
+    assert_redirected_to :research
+    get :research
     assert_response :success
   end
 
-  test 'should get dashboard if not logged in' do
-    get :dashboard
-
+  test 'should get research if not logged' do
+    get :research
     assert_response :success
   end
 
-  test 'should get dashboard' do
-    UserSession.create(rusers(:bob))
-
+  test 'should get dashboard if logged in by /research' do
+    UserSession.create(users(:bob))
+    get :research
+    assert_redirected_to :dashboard
     get :dashboard
+    assert_response :success
+  end
 
+  test 'should get dashboard if logged in' do
+    UserSession.create(users(:bob))
+    get :dashboard
     assert_response :success
   end
 
@@ -37,7 +58,7 @@ class HomeControllerTest < ActionController::TestCase
                         .where('node_revisions.status = 1')
     @wikis += revisions
 
-    get :dashboard
+    get :research
 
     @wikis.each do |obj|
       if obj.class == Revision && obj.status == 1
@@ -69,7 +90,7 @@ class HomeControllerTest < ActionController::TestCase
 
       @controller = old_controller
 
-      UserSession.create(rusers(:bob))
+      UserSession.create(users(:bob))
       session[:openid_return_to] = '/home'
       get :dashboard
       assert_select 'a[href=/openid/resume]', I18n.t('layout._alerts.approve_or_deny') + ' &raquo;'
