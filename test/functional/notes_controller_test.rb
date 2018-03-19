@@ -287,7 +287,7 @@ class NotesControllerTest < ActionController::TestCase
         id: node.title.parameterize
 
     assert_response :success
-    assert_equal "First-time poster <a href='#{node.author.name}'>#{node.author.name}</a> submitted this #{time_ago_in_words(node.created_at)} ago and it has not yet been approved by a moderator. <a class='btn btn-default btn-sm' href='/moderate/publish/#{node.id}'>Approve</a> <a class='btn btn-default btn-sm' href='/moderate/spam/#{node.id}'>Spam</a>", flash[:warning]
+    assert_equal "First-time poster <a href='/profile/#{node.author.name}'>#{node.author.name}</a> submitted this #{time_ago_in_words(node.created_at)} ago and it has not yet been approved by a moderator. <a class='btn btn-default btn-sm' href='/moderate/publish/#{node.id}'>Approve</a> <a class='btn btn-default btn-sm' href='/moderate/spam/#{node.id}'>Spam</a>", flash[:warning]
   end
 
   test 'first-timer moderated note (status=4) shown to moderator with notice and approval prompt in list view' do
@@ -648,4 +648,20 @@ class NotesControllerTest < ActionController::TestCase
     assert_equal "Only author can access the draft note", flash[:notice]
   end
 
+  test 'question deletion should delete all its answers' do
+    UserSession.create(users(:moderator))
+    node = nodes(:question)
+    node.save
+    answer1 = answers(:one)
+    answer1.save
+    answer2 = answers(:two)
+    answer2.save
+    n_count = Node.count
+
+    xhr :post, :delete, id: node.id
+
+    assert_response :success
+    assert_equal Node.count, n_count - 1
+    assert_equal Answer.count, 0
+  end
 end
