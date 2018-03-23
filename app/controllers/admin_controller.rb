@@ -28,7 +28,6 @@ class AdminController < ApplicationController
     end
     redirect_to '/profile/' + @user.username + '?_=' + Time.now.to_i.to_s
   end
-
   def demote_basic
     @user = User.find params[:id]
     unless @user.nil?
