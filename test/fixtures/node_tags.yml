@@ -70,6 +70,12 @@ blog:
   nid: 13
   date: <%= DateTime.now.to_i %>
 
+blog2:
+  tid: 18
+  uid: 1
+  nid: 13
+  date: <%= DateTime.now.to_i %>
+
 question3:
   tid: 6
   uid: 2
@@ -127,5 +133,11 @@ map_lat:
 map_lon:
   tid: 8
   uid: 1
+  nid: 13
+  date: <%= DateTime.now.to_i %>
+
+test_lego:
+  tid: 17
+  uid: 2
   nid: 13
   date: <%= DateTime.now.to_i %>

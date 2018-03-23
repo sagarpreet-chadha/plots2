@@ -1,4 +1,3 @@
----
 production:
   solr:
     hostname: pad.publiclab.org
