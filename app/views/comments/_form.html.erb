@@ -1,4 +1,4 @@
-<form id="comment-form" data-remote="true" class="well" <% if params[:controller] == 'questions' %> action= "/answers/create/<%= @node.nid %>" <% else %> action="/comment/create/<%= @node.nid %>" <% end %> method="post" >
+<form id="comment-form" data-remote="true" class="well" <% if !local_assigns[:is_answer].blank? %> action= "/answers/create/<%= @node.nid %>" <% elsif !local_assigns[:aid].blank? %> action= "/comment/answer_create/<%= aid %>" <% else %> action="/comment/create/<%= @node.nid %><%= "?type=question" if local_assigns[:type]=="question" %>" <% end %> <% if local_assigns[:aid].blank? %>method="post"<% end %>>
   <h4 style="margin-top:0;"><%= title %></h4>
 
   <style>
@@ -12,7 +12,7 @@
   <% end %>
 
   <div class="form-group dropzone">
-    <textarea onFocus="editing=true" name="body" class="form-control" id="text-input" rows="6" cols="40" placeholder="<%= placeholder %>"><%= params[:body] %></textarea>
+    <textarea style="border: 1px solid #bbb;border-bottom-left-radius: 0;border-bottom-right-radius: 0;border-bottom: 0;padding: 10px;" onFocus="editing=true" name="body" class="form-control" id="text-input" rows="6" cols="40" placeholder="<%= placeholder %>"><%= params[:body] %></textarea>
 
     <div id="imagebar">
 
@@ -48,6 +48,7 @@
 
   <div class="well col-md-11" id="preview" style="background:white;display: none">
   </div>
+  <link href="/lib/horsey/dist/horsey.min.css" rel="stylesheet">
 
   <script>
     jQuery(document).ready(function() {
@@ -64,15 +65,28 @@
   </script>
 
   <%= javascript_include_tag "dragdrop" %>
-  <script>    
+  <script>
     $('#comment-form').bind('ajax:beforeSend', function(event){      
       $("#text-input").prop('disabled',true)
       $("#comment-form .btn-primary").button('loading',true);      
     });
+    <% emoji_names = emoji_names_list %>
+    <% emojis = emoji_names[:emojis] %>
+    <% image_map = emoji_names[:image_map] %>
+    var image_map = <%= raw image_map.to_json %>
+    horsey(document.querySelector('textarea#text-input'), {
+        suggestions: (<%= raw emojis.to_json %>),
+        anchor: ':',
+        render: function (li, suggestion) {
+            var image = image_map[suggestion.text];
+            li.innerHTML = "<b>"+image+"</b><span>"+suggestion.text+"</span>";
+        },
+        limit: 6
+    });
 
-    $('#comment-form').bind('ajax:success', function(e, data, status, xhr){      
-      $('#text-input').prop('disabled',false);      
-      $('#text-input').val('');      
+    $('#comment-form').bind('ajax:success', function(e, data, status, xhr){
+      $('#text-input').prop('disabled',false);
+      $('#text-input').val('');
       $('#comments-container').append(xhr.responseText);      
       $('#comment-count')[0].innerHTML = parseInt($('#comment-count')[0].innerHTML)+1;
       $("#comment-form .btn-primary").button('reset');      
@@ -81,7 +95,8 @@
       $('#preview-btn').button('toggle');      
     })
 
-    $('#comment-form').bind('ajax:error', function(e,response){      
+    $('#comment-form').bind('ajax:error', function(e,response){  
+      notyNotification('mint', 3000, 'success', 'topRight', 'Some error occured while adding comment'); 
       $('#comment-form .control-group').addClass('has-error')
       $('#comment-form .control-group .help-block ').remove()
       $('#comment-form .control-group').append('<span class="help-block ">Error: there was a problem.</span>')
@@ -100,7 +115,7 @@
 
   <div class="control-group">
     <button type="submit" class="btn btn-primary"><%= t('comments._form.publish') %></button>
-    <% if comment %>
+    <% if local_assigns[:comment] %>
       <a class="btn btn-default preview-btn" onClick="$('#c<%= comment.cid %>preview').toggle();
           $('#c<%= comment.cid %>text-input').toggle();
           $('#c<%= comment.cid %>edit .preview-btn').button('toggle');

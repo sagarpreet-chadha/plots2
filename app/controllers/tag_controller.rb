@@ -1,6 +1,6 @@
 class TagController < ApplicationController
   respond_to :html, :xml, :json, :ics
-  before_filter :require_user, only: %i(create delete)
+  before_action :require_user, only: %i(create delete)
 
   def index
     if params[:sort]
@@ -11,39 +11,41 @@ class TagController < ApplicationController
 
     @title = I18n.t('tag_controller.tags')
     @paginated = true
+    @order_type = params[:order] == "desc" ? "asc" : "desc"
+
     if params[:search]
-    prefix = params[:search]
-    @tags = Tag.joins(:node_tag, :node)
-      .select('node.nid, node.status, term_data.*, community_tags.*')
-      .where('node.status = ?', 1)
-      .where('community_tags.date > ?', (DateTime.now - 1.month).to_i)
-      .where("name LIKE :prefix", prefix: "#{prefix}%")
-      .group(:name)
-      .order('count DESC')
-      .paginate(page: params[:page], per_page: 24)
+      keyword = params[:search]
+      @tags = Tag.joins(:node_tag, :node)
+        .select('node.nid, node.status, term_data.*, community_tags.*')
+        .where('node.status = ?', 1)
+        .where('community_tags.date > ?', (DateTime.now - 1.month).to_i)
+        .where("name LIKE :keyword", keyword: "%#{keyword}%")
+        .group(:name)
+        .order(order_string)
+        .paginate(page: params[:page], per_page: 24)
     elsif @toggle == "uses"
-    @tags = Tag.joins(:node_tag, :node)
-      .select('node.nid, node.status, term_data.*, community_tags.*')
-      .where('node.status = ?', 1)
-      .where('community_tags.date > ?', (DateTime.now - 1.month).to_i)
-      .group(:name)
-      .order('count DESC')
-      .paginate(page: params[:page], per_page: 24)
+      @tags = Tag.joins(:node_tag, :node)
+        .select('node.nid, node.status, term_data.*, community_tags.*')
+        .where('node.status = ?', 1)
+        .where('community_tags.date > ?', (DateTime.now - 1.month).to_i)
+        .group(:name)
+        .order(order_string)
+        .paginate(page: params[:page], per_page: 24)
     elsif @toggle == "name"
-    @tags = Tag.joins(:node_tag, :node)
-      .select('node.nid, node.status, term_data.*, community_tags.*')
-      .where('node.status = ?', 1)
-      .where('community_tags.date > ?', (DateTime.now - 1.month).to_i)
-      .group(:name)
-      .order('name')
-      .paginate(page: params[:page], per_page: 24)
+      @tags = Tag.joins(:node_tag, :node)
+        .select('node.nid, node.status, term_data.*, community_tags.*')
+        .where('node.status = ?', 1)
+        .where('community_tags.date > ?', (DateTime.now - 1.month).to_i)
+        .group(:name)
+        .order(order_string)
+        .paginate(page: params[:page], per_page: 24)
     else
       tags = Tag.joins(:node_tag, :node)
-                .select('node.nid, node.status, term_data.*, community_tags.*')
-                .where('node.status = ?', 1)
-                .where('community_tags.date > ?', (DateTime.now - 1.month).to_i)
-                .group(:name)
-                .order('name')
+        .select('node.nid, node.status, term_data.*, community_tags.*')
+        .where('node.status = ?', 1)
+        .where('community_tags.date > ?', (DateTime.now - 1.month).to_i)
+        .group(:name)
+        .order(order_string)
 
       followed = []
       not_followed = []
@@ -63,16 +65,18 @@ class TagController < ApplicationController
   def show
     # try for a matching /wiki/_TAGNAME_ or /_TAGNAME_
     @wiki = Node.where(path: "/wiki/#{params[:id]}").try(:first) || Node.where(path: "/#{params[:id]}").try(:first)
-    @wiki = Node.find(@wiki.power_tag('redirect'))  if @wiki&.has_power_tag('redirect') # use a redirected wiki page if it exists
+    @wiki = Node.find(@wiki.power_tag('redirect')) if @wiki&.has_power_tag('redirect') # use a redirected wiki page if it exists
 
-    default_type = if params[:id].match('question:')
+    default_type = if params[:id].match?('question:')
                      'questions'
-    else
+                   else
                      'note'
                   end
     # params[:node_type] - this is an optional param
     # if params[:node_type] is nil - use @default_type
     @node_type = params[:node_type] || default_type
+    @start = Time.parse(params[:start]) if params[:start]
+    @end = Time.parse(params[:end]) if params[:end]
 
     node_type = 'note' if @node_type == 'questions' || @node_type == 'note'
     node_type = 'page' if @node_type == 'wiki'
@@ -90,13 +94,30 @@ class TagController < ApplicationController
         .order('node_revisions.timestamp DESC')
     else
       @tags = Tag.where(name: params[:id])
-      nodes = Node.where(status: 1, type: node_type)
-        .includes(:revision, :tag)
-        .references(:term_data, :node_revisions)
-        .where('term_data.name = ? OR term_data.parent = ?', params[:id], params[:id])
-        .paginate(page: params[:page], per_page: 24)
-        .order('node_revisions.timestamp DESC')
+
+      if @node_type == 'questions'
+        if params[:id].include? "question:"
+          other_tag = params[:id].split(':')[1]
+        else
+          other_tag = "question:" + params[:id]
+        end
+
+        nodes = Node.where(status: 1, type: node_type)
+          .includes(:revision, :tag)
+          .references(:term_data, :node_revisions)
+          .where('term_data.name = ? OR term_data.name = ? OR term_data.parent = ?', params[:id], other_tag, params[:id])
+          .paginate(page: params[:page], per_page: 24)
+          .order('node_revisions.timestamp DESC')
+      else
+        nodes = Node.where(status: 1, type: node_type)
+          .includes(:revision, :tag)
+          .references(:term_data, :node_revisions)
+          .where('term_data.name = ? OR term_data.parent = ?', params[:id], params[:id])
+          .paginate(page: params[:page], per_page: 24)
+          .order('node_revisions.timestamp DESC')
+      end
     end
+    nodes = nodes.where(created: @start.to_i..@end.to_i) if @start && @end
 
     # breaks the parameter
     # sets everything to an empty array
@@ -105,9 +126,7 @@ class TagController < ApplicationController
     @notes = nodes.where('node.nid NOT IN (?)', qids) if @node_type == 'note'
     @questions = nodes.where('node.nid IN (?)', qids) if @node_type == 'questions'
     @answered_questions = []
-    if @questions
-      @questions.each { |question| @answered_questions << question if question.answers.any? { |answer| answer.accepted } }
-    end
+    @questions&.each { |question| @answered_questions << question if question.answers.any?(&:accepted) }
     @wikis = nodes if @node_type == 'wiki'
     @nodes = nodes if @node_type == 'maps'
     @title = params[:id]
@@ -144,11 +163,11 @@ class TagController < ApplicationController
   def show_for_author
     # try for a matching /wiki/_TAGNAME_ or /_TAGNAME_
     @wiki = Node.where(path: "/wiki/#{params[:id]}").try(:first) || Node.where(path: "/#{params[:id]}").try(:first)
-    @wiki = Node.find(@wiki.power_tag('redirect'))  if @wiki&.has_power_tag('redirect')
+    @wiki = Node.find(@wiki.power_tag('redirect')) if @wiki&.has_power_tag('redirect')
 
-    default_type = if params[:id].match('question:')
+    default_type = if params[:id].match?('question:')
                      'questions'
-    else
+                   else
                      'note'
                   end
 
@@ -171,8 +190,8 @@ class TagController < ApplicationController
     @user = User.find_by(name: params[:author])
 
     nodes = Tag.tagged_nodes_by_author(@tagname, @user)
-                .where(status: 1, type: node_type)
-                .paginate(page: params[:page], per_page: 24)
+      .where(status: 1, type: node_type)
+      .paginate(page: params[:page], per_page: 24)
 
     # breaks the parameter
     # sets everything to an empty array
@@ -180,13 +199,11 @@ class TagController < ApplicationController
 
     @notes = nodes.where('node.nid NOT IN (?)', qids) if @node_type == 'note'
     @questions = nodes.where('node.nid IN (?)', qids) if @node_type == 'questions'
-    ans_ques = Answer.where(uid: @user.id, accepted: true).includes(:node).map do |ans|
-      ans.node
-    end
+    ans_ques = Answer.where(uid: @user.id, accepted: true).includes(:node).map(&:node)
     @answered_questions = ans_ques.paginate(page: params[:page], per_page: 24)
     @wikis = nodes if @node_type == 'wiki'
     @nodes = nodes if @node_type == 'maps'
-    @title = "'" + @tagname.to_s + "' by " +  params[:author]
+    @title = "'" + @tagname.to_s + "' by " + params[:author]
     # the following could be refactored into a Tag.contributor_count method:
     notes = Node.where(status: 1, type: 'note')
       .select('node.nid, node.type, node.uid, node.status, term_data.*, community_tags.*')
@@ -211,7 +228,6 @@ class TagController < ApplicationController
       end
     end
   end
-
 
   def widget
     num = params[:n] || 4
@@ -297,7 +313,6 @@ class TagController < ApplicationController
       else
         @output[:errors] << node.can_tag(tagname, current_user, true)
       end
-
     end
     respond_with do |format|
       format.html do
@@ -324,7 +339,7 @@ class TagController < ApplicationController
       respond_with do |format|
         format.html do
           if request.xhr?
-            render text: node_tag.tid
+            render plain: node_tag.tid
           else
             flash[:notice] = I18n.t('tag_controller.tag_deleted')
             redirect_to node_tag.node.path
@@ -382,18 +397,18 @@ class TagController < ApplicationController
   def rss_for_tagged_with_author
     @user = User.find_by(name: params[:authorname])
     @notes = Tag.tagged_nodes_by_author(params[:tagname], @user)
-               .where(status: 1)
-               .limit(20)
-     respond_to do |format|
-       format.rss do
-         response.headers['Content-Type'] = 'application/xml; charset=utf-8'
-         response.headers['Access-Control-Allow-Origin'] = '*'
-         render layout: false
-       end
-       format.ics do
-         response.headers['Content-Disposition'] = "attachment; filename='public-lab-events.ics'"
-         response.headers['Content-Type'] = 'text/calendar; charset=utf-8'
-         render layout: false, template: 'tag/icalendar.ics', filename: 'public-lab-events.ics'
+      .where(status: 1)
+      .limit(20)
+    respond_to do |format|
+      format.rss do
+        response.headers['Content-Type'] = 'application/xml; charset=utf-8'
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        render layout: false
+      end
+      format.ics do
+        response.headers['Content-Disposition'] = "attachment; filename='public-lab-events.ics'"
+        response.headers['Content-Type'] = 'text/calendar; charset=utf-8'
+        render layout: false, template: 'tag/icalendar.ics', filename: 'public-lab-events.ics'
       end
     end
   end
@@ -435,5 +450,15 @@ class TagController < ApplicationController
 
   def gridsEmbed
     render layout: false
+  end
+
+  private
+
+  def order_string
+    if params[:search] || @toggle == "uses"
+      params[:order] == "asc" ? "count ASC" : "count DESC"
+    else
+      params[:order] == "asc" ? "name ASC" : "name DESC"
+    end
   end
 end

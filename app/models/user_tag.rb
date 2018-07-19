@@ -1,14 +1,16 @@
-class UserTag < ActiveRecord::Base
-  attr_accessible :uid, :value
+class UserTag < ApplicationRecord
   belongs_to :user, foreign_key: :uid
 
   validates :value, presence: :true
   validates :value, format: { with: /\A[\w\.:-]*\z/, message: 'can only include letters, numbers, and dashes' }
-
+  validates_uniqueness_of :value, :scope => :uid
   before_save :preprocess
 
+  DIGEST_DAILY = 0
+  DIGEST_WEEKLY = 1
+
   def preprocess
-    self.value = self.value.downcase
+    self.value = value.downcase
   end
 
   def self.exists?(uid, value)
@@ -16,7 +18,15 @@ class UserTag < ActiveRecord::Base
   end
 
   def name
-    self.value
+    value
   end
 
+  def self.find_with_omniauth(auth)
+    find_by(value: "oauth:" + auth['provider'] + ":" + auth['uid'])
+  end
+
+  def self.create_with_omniauth(auth, uid)
+    create(value: "oauth:" + auth['provider'] + ":" + auth['uid'],
+          uid: uid)
+  end
 end

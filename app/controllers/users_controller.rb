@@ -1,7 +1,7 @@
 class UsersController < ApplicationController
-  before_filter :require_no_user, :only => [:new]
-  before_filter :require_user, :only => [:update]
-  before_action :set_user, only: [:info, :followed, :following, :followers]
+  before_action :require_no_user, :only => [:new]
+  before_action :require_user, :only => %i(edit update)
+  before_action :set_user, only: %i(info followed following followers)
 
   def new
     @spamaway = Spamaway.new
@@ -10,17 +10,17 @@ class UsersController < ApplicationController
   end
 
   def create
-    @user = User.new(params[:user])
+    @user = User.new(user_params)
     @user.status = 1
     using_recaptcha = !params[:spamaway] && Rails.env == "production"
     recaptcha = verify_recaptcha(model: @user) if using_recaptcha
-    @spamaway = Spamaway.new(params[:spamaway]) unless using_recaptcha
+    @spamaway = Spamaway.new(spamaway_params) unless using_recaptcha
     if ((@spamaway&.valid?) || recaptcha) && @user.save({})
       if current_user.crypted_password.nil? # the user has not created a pwd in the new site
         flash[:warning] = I18n.t('users_controller.account_migrated_create_new_password')
         redirect_to "/profile/edit"
       else
-        @user.add_to_lists(['publiclaboratory'])
+        WelcomeMailer.notify_newcomer(@user).deliver_now
         flash[:notice] = I18n.t('users_controller.registration_successful').html_safe
         flash[:warning] = I18n.t('users_controller.spectralworkbench_or_mapknitter', :url1 => "'#{session[:openid_return_to]}'").html_safe if session[:openid_return_to]
         session[:openid_return_to] = nil
@@ -42,48 +42,42 @@ class UsersController < ApplicationController
   end
 
   def update
-    if current_user
     @user = current_user
-      @user.attributes = params[:user]
-      @user.save({}) do |result|
-        if result
-          if session[:openid_return_to] # for openid login, redirects back to openid auth process
-            return_to = session[:openid_return_to]
-            session[:openid_return_to] = nil
-            redirect_to return_to
-          else
-            flash[:notice] = I18n.t('users_controller.successful_updated_profile')+"<a href='/dashboard'>"+I18n.t('users_controller.return_dashboard')+" &raquo;</a>"
-            redirect_to "/profile/"+@user.username
-          end
+    @user.attributes = user_params
+    @user.save({}) do |result|
+      if result
+        if session[:openid_return_to] # for openid login, redirects back to openid auth process
+          return_to = session[:openid_return_to]
+          session[:openid_return_to] = nil
+          redirect_to return_to
         else
-          render :template => 'users/edit'
+          flash[:notice] = I18n.t('users_controller.successful_updated_profile') + "<a href='/dashboard'>" + I18n.t('users_controller.return_dashboard') + " &raquo;</a>"
+          return redirect_to "/profile/" + @user.username
         end
+      else
+        render :template => 'users/edit'
       end
-    else
-      flash[:error] = I18n.t('users_controller.only_user_edit_profile', :user => @user.name).html_safe
-      redirect_to "/profile/"+@user.name
     end
   end
 
   def edit
     @action = "update" # sets the form url
     if params[:id] # admin only
-      @drupal_user = DrupalUser.find_by(name: params[:id])
-      @user = @drupal_user.user
+      @user = User.find_by(username: params[:id])
     else
       @user = current_user
-      @drupal_user = current_user.drupal_user
     end
-    if current_user && current_user.uid == @user.uid #|| current_user.role == "admin"
+    if current_user && current_user.uid == @user.uid # || current_user.role == "admin"
       render :template => "users/edit"
     else
       flash[:error] = I18n.t('users_controller.only_user_edit_profile', :user => @user.name).html_safe
-      redirect_to "/profile/"+@user.name
+      redirect_to "/profile/" + @user.name
     end
   end
 
   def list
     sort_param = params[:sort]
+    @tagname_param = params[:tagname]
 
     if params[:id]
       order_string = 'updated_at DESC'
@@ -101,26 +95,33 @@ class UsersController < ApplicationController
 
     # allow admins to view recent users
     if params[:id]
-      @users = DrupalUser.joins('INNER JOIN rusers ON rusers.username = users.name')
-                          .order(order_string)
-                          .where('rusers.role = ?', params[:id])
-                          .where('rusers.status = 1')
-                          .page(params[:page])
+      @users = User.order(order_string)
+                    .where('rusers.role = ?', params[:id])
+                    .where('rusers.status = 1')
+                    .page(params[:page])
+
+    elsif @tagname_param
+      @users = User.where(id: UserTag.where(value: @tagname_param).collect(&:uid))
+                    .page(params[:page])
+
     else
       # recently active
-      @users = DrupalUser.select('*, MAX(node.changed) AS last_updated')
-                          .joins(:node)
-                          .group('users.uid')
-                          .where('node.status = 1')
-                          .order(order_string)
-                          .page(params[:page])
+      @users = User.select('*, rusers.status, MAX(node.changed) AS last_updated')
+                    .joins(:node)
+                    .group('rusers.id')
+                    .where('node.status = 1')
+                    .order(order_string)
+                    .page(params[:page])
     end
-    @users = @users.where('users.status = 1') unless current_user && (current_user.can_moderate?)
+
+    @users = @users.where('rusers.status = 1') unless current_user&.can_moderate?
   end
 
   def profile
     if current_user && params[:id].nil?
       redirect_to "/profile/#{current_user.username}"
+    elsif !current_user && params[:id].nil?
+      redirect_to "/"
     else
       @user = DrupalUser.find_by(name: params[:id])
       @profile_user = User.find_by(username: params[:id])
@@ -129,18 +130,23 @@ class UsersController < ApplicationController
                    .paginate(page: params[:page], per_page: 24)
                    .order("nid DESC")
                    .where(status: 1, uid: @user.uid)
+
+      if current_user && current_user.uid == @profile_user.uid
+        coauthor_nids = Node.joins(:node_tag).joins('LEFT OUTER JOIN term_data ON term_data.tid = community_tags.tid').select('node.*, term_data.*, community_tags.*').where(type: 'note', status: 3).where('term_data.name = (?)', "with:#{@profile_user.username}").collect(&:nid)
+        @drafts = Node.where('(nid IN (?) OR (status = 3 AND uid = ?))', coauthor_nids, @profile_user.uid).paginate(page: params[:page], per_page: 24)
+      end
       @coauthored = @profile_user.coauthored_notes
                                  .paginate(page: params[:page], per_page: 24)
                                  .order('node_revisions.timestamp DESC')
       @questions = @user.user.questions
                              .order('node.nid DESC')
                              .paginate(:page => params[:page], :per_page => 24)
-      @likes = (@user.liked_notes.includes([:tag, :comments])+@user.liked_pages)
+      @likes = (@user.liked_notes.includes(%i(tag comments)) + @user.liked_pages)
                      .paginate(page: params[:page], per_page: 24)
       questions = Node.questions
                             .where(status: 1)
                             .order('node.nid DESC')
-      ans_ques = questions.select{|q| q.answers.collect(&:author).include?(@user)}
+      ans_ques = questions.select { |q| q.answers.collect(&:author).include?(@user) }
       @answered_questions = ans_ques.paginate(page: params[:page], per_page: 24)
       wikis = Revision.order("nid DESC")
                       .where('node.type' => 'page', 'node.status' => 1, uid: @user.uid)
@@ -148,7 +154,7 @@ class UsersController < ApplicationController
                       .limit(20)
       @wikis = wikis.collect(&:parent).uniq
 
-      @comment_count = Comment.where(status: 0, uid: @user.uid).count
+      @comment_count = Comment.where(status: 1, uid: @user.uid).count
 
       # User's social links
       @github = @profile_user.social_link("github")
@@ -166,7 +172,7 @@ class UsersController < ApplicationController
       end
 
       if @user.status == 0
-        if current_user && (current_user.can_moderate?)
+        if current_user&.can_moderate?
           flash.now[:error] = I18n.t('users_controller.user_has_been_banned')
         else
           flash[:error] = I18n.t('users_controller.user_has_been_banned')
@@ -180,9 +186,9 @@ class UsersController < ApplicationController
 
   def likes
     @user = DrupalUser.find_by(name: params[:id])
-    @title = "Liked by "+@user.name
+    @title = "Liked by " + @user.name
     @notes = @user.liked_notes
-                  .includes([:tag, :comments])
+                  .includes(%i(tag comments))
                   .paginate(page: params[:page], per_page: 24)
     @wikis = @user.liked_pages
     @tagnames = []
@@ -211,11 +217,11 @@ class UsersController < ApplicationController
   end
 
   def reset
-    if params[:key] && params[:key] != nil
+    if params[:key] && !params[:key].nil?
       @user = User.find_by(reset_key: params[:key])
       if @user
         if params[:user] && params[:user][:password]
-          if @user.username.downcase == params[:user][:username].downcase
+          if @user.username.casecmp(params[:user][:username].downcase).zero?
             @user.password = params[:user][:password]
             @user.password_confirmation = params[:user][:password]
             @user.reset_key = nil
@@ -226,7 +232,7 @@ class UsersController < ApplicationController
               flash[:error] = I18n.t('users_controller.password_reset_failed').html_safe
               redirect_to "/"
             end
-	  else
+          else
             flash[:error] = I18n.t('users_controller.password_change_failed')
           end
         else
@@ -243,7 +249,7 @@ class UsersController < ApplicationController
         key = user.generate_reset_key
         user.save({})
         # send key to user email
-        PasswordResetMailer.reset_notify(user, key) unless user.nil? # respond the same to both successes and failures; security
+        PasswordResetMailer.reset_notify(user, key).deliver_now unless user.nil? # respond the same to both successes and failures; security
       end
       flash[:notice] = I18n.t('users_controller.password_reset_email')
       redirect_to "/login"
@@ -253,7 +259,7 @@ class UsersController < ApplicationController
   def comments
     @comments = Comment.limit(20)
                              .order("timestamp DESC")
-                             .where(status: 0, uid: params[:id])
+                             .where(status: 1, uid: params[:id])
                              .paginate(page: params[:page])
     render partial: 'comments/comments'
   end
@@ -279,8 +285,7 @@ class UsersController < ApplicationController
     end
   end
 
-  def info
-  end
+  def info; end
 
   # content this person follows
   def followed
@@ -299,9 +304,22 @@ class UsersController < ApplicationController
     render 'show_follow'
   end
 
+  def test_digest_email
+    DigestMailJob.perform_async
+    redirect_to "/"
+  end
+
   private
 
   def set_user
     @user = User.find_by(username: params[:id])
+  end
+
+  def user_params
+    params.require(:user).permit(:username, :email, :password, :password_confirmation, :openid_identifier, :key, :photo, :photo_file_name, :bio, :status)
+  end
+
+  def spamaway_params
+    params.require(:spamaway).permit(:follow_instructions, :statement1, :statement2, :statement3, :statement4)
   end
 end

@@ -6,9 +6,8 @@
 # TODO: Refactor TypeaheadService and SearchService so that common functions come from a higher level class?
 class TypeaheadService
   def initialize; end
-  include SolrToggle
 
-  # search_users() returns a standard TagResult; 
+  # search_users() returns a standard TagResult;
   # users() returns an array of User records
   # It's unclear if TagResult was supposed to be broken into other types like DocResult?
   # but perhaps could simply be renamed Result.
@@ -18,7 +17,7 @@ class TypeaheadService
       User.search(input)
         .limit(limit)
         .where(status: 1)
-    else 
+    else
       User.limit(limit)
         .order('id DESC')
         .where('username LIKE ? AND status = 1', '%' + input + '%')
@@ -35,111 +34,52 @@ class TypeaheadService
   end
 
   def comments(input, limit = 5)
-<<<<<<< HEAD
-    Comment.limit(limit)
-           .order('nid DESC')
-           .where('status = 1 AND comment LIKE ?', '%' + input + '%')
-  end
-
-  def notes(input, limit = 5)
-    if solrAvailable
-      search = Node.search do
-        fulltext input
-        with :status, 1
-        #with :type, "note"
-        order_by :updated_at, :desc
-        paginate page: 1, per_page: limit
-      end
-      search.results
-    else 
-      Node.limit(limit)
-          .order('nid DESC')
-          .where(type: "note", status: 1)
-          .where('title LIKE ?', '%' + input + '%')
-=======
     if ActiveRecord::Base.connection.adapter_name == 'Mysql2'
       Comment.search(input)
         .limit(limit)
         .order('nid DESC')
         .where(status: 1)
-    else 
+    else
       Comment.limit(limit)
         .order('nid DESC')
         .where('status = 1 AND comment LIKE ?', '%' + input + '%')
     end
   end
 
-  def notes(input, limit = 5)
-    if ActiveRecord::Base.connection.adapter_name == 'Mysql2'
-      Node.search(input)
-        .group(:nid)
-        .includes(:node)
-        .references(:node)
-        .limit(limit)
-        .where("node.type": "note", "node.status": 1)
-        .order('node.changed DESC')
-    else 
-      Node.limit(limit)
-        .group(:nid)
-        .where(type: "note", status: 1)
-        .order(changed: :desc)
-        .where('title LIKE ?', '%' + input + '%')
->>>>>>> 6a7be03cde8406c12346cfecba716c5539cd9f1d
-    end
+  # default order is recency
+  def nodes(input, _limit = 5, order = :default)
+    Node.search(query: input, order: order, limit: 5)
+      .group(:nid)
+      .where('node.status': 1)
   end
 
-  def wikis(input, limit = 5)
-<<<<<<< HEAD
-    Node.limit(limit)
-=======
-    if ActiveRecord::Base.connection.adapter_name == 'Mysql2'
-      Node.search(input)
-        .group('node.nid')
-        .includes(:node)
-        .references(:node)
-        .limit(limit)
-        .where("node.type": "page", "node.status": 1)
-    else 
-      Node.limit(limit)
->>>>>>> 6a7be03cde8406c12346cfecba716c5539cd9f1d
-        .order('nid DESC')
-        .where('type = "page" AND node.status = 1 AND title LIKE ?', '%' + input + '%')
-    end
+  def notes(input, limit = 5, order = :default)
+    nodes(input, limit, order)
+      .where("node.type": "note")
   end
 
-  def maps(input, limit = 5)
-    Node.limit(limit)
-      .order('nid DESC')
-      .where('type = "map" AND node.status = 1 AND title LIKE ?', '%' + input + '%')
+  def wikis(input, limit = 5, order = :default)
+    nodes(input, limit, order)
+      .where("node.type": "page")
+  end
+
+  def maps(input, limit = 5, order = :default)
+    nodes(input, limit, order)
+      .where("node.type": "map")
+  end
+
+  def questions(input, limit = 5, order = :default)
+    nodes(input, limit, order)
+      .where('node.type': 'note')
+      .joins(:tag)
+      .where('term_data.name LIKE ?', 'question:%')
   end
 
   # Run a search in any of the associated systems for references that contain the search string
-<<<<<<< HEAD
-  def search_all(srchString, limit = 5)
-=======
   def search_all(search_string, limit = 5)
->>>>>>> 6a7be03cde8406c12346cfecba716c5539cd9f1d
     sresult = TagList.new
     unless search_string.nil? || search_string.blank?
       # notes
-<<<<<<< HEAD
-      notesrch = search_notes(srchString, limit)
-      sresult.addAll(notesrch.getTags)
-      # wikis
-      wikisrch = search_wikis(srchString, limit)
-      sresult.addAll(wikisrch.getTags)
-      # User profiles
-      usersrch = search_profiles(srchString, limit)
-      sresult.addAll(usersrch.getTags)
-      # Tags -- handled differently because tag
-      tagsrch = search_tags(srchString, limit)
-      sresult.addAll(tagsrch.getTags)
-      # maps
-      mapsrch = search_maps(srchString, limit)
-      sresult.addAll(mapsrch.getTags)
-      # questions
-      qsrch = search_questions(srchString, limit)
-=======
       notesrch = search_notes(search_string, limit)
       sresult.addAll(notesrch.getTags)
       # wikis
@@ -156,9 +96,8 @@ class TypeaheadService
       sresult.addAll(mapsrch.getTags)
       # questions
       qsrch = search_questions(search_string, limit)
->>>>>>> 6a7be03cde8406c12346cfecba716c5539cd9f1d
       sresult.addAll(qsrch.getTags)
-      #comments
+      # comments
       commentsrch = search_comments(search_string, limit)
       sresult.addAll(commentsrch.getTags)
     end
@@ -166,11 +105,7 @@ class TypeaheadService
   end
 
   # Search profiles for matching text
-<<<<<<< HEAD
-  def search_profiles(srchString, limit = 5)
-=======
   def search_profiles(search_string, limit = 5)
->>>>>>> 6a7be03cde8406c12346cfecba716c5539cd9f1d
     sresult = TagList.new
     unless search_string.nil? || search_string.blank?
       # User profiles
@@ -187,17 +122,10 @@ class TypeaheadService
   end
 
   # Search notes for matching strings
-<<<<<<< HEAD
-  def search_notes(srchString, limit = 5)
-    sresult = TagList.new
-    unless srchString.nil? || srchString == 0
-      notes(srchString, limit).each do |match|
-=======
   def search_notes(search_string, limit = 5)
     sresult = TagList.new
     unless search_string.nil? || search_string.blank?
-      notes(search_string, limit).uniq.each do |match|
->>>>>>> 6a7be03cde8406c12346cfecba716c5539cd9f1d
+      notes(search_string, limit).distinct.each do |match|
         tval = TagResult.new
         tval.tagId = match.nid
         tval.tagVal = match.title
@@ -210,11 +138,7 @@ class TypeaheadService
   end
 
   # Search wikis for matching strings
-<<<<<<< HEAD
-  def search_wikis(srchString, limit = 5)
-=======
   def search_wikis(search_string, limit = 5)
->>>>>>> 6a7be03cde8406c12346cfecba716c5539cd9f1d
     sresult = TagList.new
     unless search_string.nil? || search_string.blank?
       wikis(search_string, limit).select('node.title,node.type,node.nid,node.path').each do |match|
@@ -230,11 +154,7 @@ class TypeaheadService
   end
 
   # Search maps for matching text
-<<<<<<< HEAD
-  def search_maps(srchString, limit = 5)
-=======
   def search_maps(search_string, limit = 5)
->>>>>>> 6a7be03cde8406c12346cfecba716c5539cd9f1d
     sresult = TagList.new
     unless search_string.nil? || search_string.blank?
       # maps
@@ -251,19 +171,11 @@ class TypeaheadService
   end
 
   # Search tag values for matching text
-<<<<<<< HEAD
-  def search_tags(srchString, limit = 5)
-=======
   def search_tags(search_string, limit = 5)
->>>>>>> 6a7be03cde8406c12346cfecba716c5539cd9f1d
     sresult = TagList.new
     unless search_string.nil? || search_string.blank?
       # Tags
-<<<<<<< HEAD
-      tlist = tags(srchString, limit)
-=======
       tlist = tags(search_string, limit)
->>>>>>> 6a7be03cde8406c12346cfecba716c5539cd9f1d
       tlist.each do |match|
         ntag = TagResult.new
         ntag.tagId = 0
@@ -276,32 +188,9 @@ class TypeaheadService
   end
 
   # Search question entries for matching text
-<<<<<<< HEAD
-  def search_questions(srchString, limit = 5)
-=======
   def search_questions(input, limit = 5)
->>>>>>> 6a7be03cde8406c12346cfecba716c5539cd9f1d
     sresult = TagList.new
-    questions = if ActiveRecord::Base.connection.adapter_name == 'Mysql2'
-      Node.search(input)
-        .group(:nid)
-        .includes(:node)
-        .references(:node)
-        .limit(limit)
-        .where("node.type": "note", "node.status": 1)
-        .order('node.changed DESC')
-        .joins(:tag)
-        .where('term_data.name LIKE ?', 'question:%')
-    else 
-      Node.where('title LIKE ?', '%' + input + '%')
-        .joins(:tag)
-        .where('term_data.name LIKE ?', 'question:%')
-        .limit(limit)
-        .group(:nid)
-        .where(type: "note", status: 1)
-        .order(changed: :desc)
-    end
-    questions.each do |match|
+    questions = self.questions(input, limit).each do |match|
       tval = TagResult.fromSearch(
         match.nid,
         match.title,
@@ -328,5 +217,4 @@ class TypeaheadService
     end
     sresult
   end
-
 end
