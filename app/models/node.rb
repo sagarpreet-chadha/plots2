@@ -24,33 +24,8 @@ class Node < ActiveRecord::Base
   self.table_name = 'node'
   self.primary_key = 'nid'
 
-  def self.search(query:, order: :default, limit:)
-    order_param = if order == :default
-                    { changed: :desc }
-                  elsif order == :likes
-                    { cached_likes: :desc }
-                  elsif order == :views
-                    { views: :desc }
-                  end
-
-    if ActiveRecord::Base.connection.adapter_name == 'Mysql2'
-      if order == :natural
-        nids = Revision.select('node_revisions.nid, node_revisions.body, node_revisions.title, MATCH(node_revisions.body, node_revisions.title) AGAINST("' + query.to_s + '" IN NATURAL LANGUAGE MODE) AS score')
-          .where('MATCH(node_revisions.body, node_revisions.title) AGAINST(? IN NATURAL LANGUAGE MODE)', query)
-          .collect(&:nid)
-        where(nid: nids, status: 1)
-      else
-        nids = Revision.where('MATCH(node_revisions.body, node_revisions.title) AGAINST(?)', query).collect(&:nid)
-        tnids = Tag.find_nodes_by_type(query, type = %w(note page)).collect(&:nid) # include results by tag
-        where(nid: nids + tnids, status: 1)
-          .order(order_param)
-      end
-    else
-      nodes = Node.limit(limit)
-        .where('title LIKE ?', '%' + query + '%')
-        .where(status: 1)
-        .order(order_param)
-    end
+  def self.search(query)
+    Revision.where('MATCH(node_revisions.body, node_revisions.title) AGAINST(?)', query)
   end
 
   def updated_month

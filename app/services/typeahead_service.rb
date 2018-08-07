@@ -8,22 +8,61 @@
 # that Typeahead and Search services use
 class TypeaheadService
   def initialize; end
+  include SolrToggle
 
   def tags(input, limit = 5)
-    SrchScope.find_tags(input, limit)
-             .group('node.nid')
+    Tag.includes(:node)
+      .references(:node)
+      .where('node.status = 1')
+      .limit(limit)
+      .where('name LIKE ?', '%' + input + '%')
+      .group('node.nid')
   end
 
-  # default order is recency
-  def nodes(input, _limit = 5, order = :default)
-    Node.search(query: input, order: order, limit: 5)
-      .group(:nid)
-      .where('node.status': 1)
+  def comments(input, limit = 5)
+    if ActiveRecord::Base.connection.adapter_name == 'Mysql2'
+      Comment.search(input)
+        .limit(limit)
+        .order('nid DESC')
+        .where(status: 1)
+    else 
+      Comment.limit(limit)
+        .order('nid DESC')
+        .where('status = 1 AND comment LIKE ?', '%' + input + '%')
+    end
   end
 
-  def notes(input, limit = 5, order = :default)
-    nodes(input, limit, order)
-      .where("node.type": "note")
+  def notes(input, limit = 5)
+    if ActiveRecord::Base.connection.adapter_name == 'Mysql2'
+      Node.search(input)
+        .group(:nid)
+        .includes(:node)
+        .references(:node)
+        .limit(limit)
+        .where("node.type": "note", "node.status": 1)
+        .order('node.changed DESC')
+    else 
+      Node.limit(limit)
+        .group(:nid)
+        .where(type: "note", status: 1)
+        .order(changed: :desc)
+        .where('title LIKE ?', '%' + input + '%')
+    end
+  end
+
+  def wikis(input, limit = 5)
+    if ActiveRecord::Base.connection.adapter_name == 'Mysql2'
+      Node.search(input)
+        .group('node.nid')
+        .includes(:node)
+        .references(:node)
+        .limit(limit)
+        .where("node.type": "page", "node.status": 1)
+    else 
+      Node.limit(limit)
+        .order('nid DESC')
+        .where('type = "page" AND node.status = 1 AND title LIKE ?', '%' + input + '%')
+    end
   end
 
   def maps(input, limit = 5, order = :default)
@@ -32,7 +71,7 @@ class TypeaheadService
   end
 
   # Run a search in any of the associated systems for references that contain the search string
-  # and package up as a TagResult
+
   def search_all(search_string, limit = 5)
     sresult = TagList.new
     unless search_string.nil? || search_string.blank?
@@ -61,7 +100,6 @@ class TypeaheadService
     sresult
   end
 
-  # Search profiles for matching text and package up as a TagResult
   def search_profiles(search_string, limit = 5)
     sresult = TagList.new
     unless search_string.nil? || search_string.blank?
@@ -78,12 +116,10 @@ class TypeaheadService
     sresult
   end
 
-  # Search notes for matching strings and package up as a TagResult
   def search_notes(search_string, limit = 5)
     sresult = TagList.new
     unless search_string.nil? || search_string.blank?
-      notes = notes(search_string, limit).distinct
-      notes.each do |match|
+      notes(search_string, limit).uniq.each do |match|
         tval = TagResult.new
         tval.tagId = match.nid
         tval.tagVal = match.title
@@ -95,7 +131,6 @@ class TypeaheadService
     sresult
   end
 
-  # Search wikis for matching strings and package up as a TagResult
   def search_wikis(search_string, limit = 5)
     sresult = TagList.new
     unless search_string.nil? || search_string.blank?
@@ -112,7 +147,6 @@ class TypeaheadService
     sresult
   end
 
-  # Search maps for matching text and package up as a TagResult
   def search_maps(search_string, limit = 5)
     sresult = TagList.new
     unless search_string.nil? || search_string.blank?
@@ -129,7 +163,6 @@ class TypeaheadService
     sresult
   end
 
-  # Search tag values for matching text and package up as a TagResult
   def search_tags(search_string, limit = 5)
     sresult = TagList.new
     unless search_string.nil? || search_string.blank?
@@ -146,7 +179,6 @@ class TypeaheadService
     sresult
   end
 
-  # Search question entries for matching text and package up as a TagResult
   def search_questions(input, limit = 5)
     sresult = TagList.new
     questions = SrchScope.find_questions(input, limit, order = :default)

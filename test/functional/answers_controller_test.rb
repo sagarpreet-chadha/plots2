@@ -39,6 +39,22 @@ class AnswersControllerTest < ActionController::TestCase
     assert_response :success
   end
 
+  test 'Users with subscription=everything should also be emailed ' do
+    UserSession.create(rusers(:bob))
+    node = node(:question)
+    initial_mail_count = ActionMailer::Base.deliveries.size
+    assert_difference 'Answer.count' do
+      xhr :post, :create,
+          nid: node.nid,
+          body: 'Sample answer by the current user'
+    end
+
+    user_with_everything_tag = rusers(:moderator)
+    assert_not_equal initial_mail_count, ActionMailer::Base.deliveries.size
+    assert ActionMailer::Base.deliveries.collect(&:to).include?([user_with_everything_tag.email])
+    assert_response :success
+  end
+
   test 'should get update if user is logged in' do
     UserSession.create(users(:bob))
     answer = answers(:one)
