@@ -1,13 +1,14 @@
 class SearchCriteria
-  attr_reader :query, :tag, :sort_by, :field, :limit
+  attr_reader :query, :tag, :field, :limit
+  attr_accessor :sort_by
 
-  def initialize(params)
-    @query = params[:srchString]
-    @tag = params[:tagName]
-    @sort_by = params[:sort_by]
-    @order_direction = params[:order_direction]
-    @field = params[:field]
-    @limit = params[:limit]
+  def initialize(args)
+    @query = args[:query]
+    @tag = args[:tag]
+    @sort_by = args[:sort_by]
+    @order_direction = args[:order_direction]
+    @field = args[:field]
+    @limit = args[:limit] || 10
   end
 
   def valid?
