@@ -43,8 +43,6 @@
                 <!-- <p><i class="fa fa-users" style="color:blue"></i> contributors</p> -->
                 <a <% if @widget %>target="_blank"<% end %> href="<%= node.path %>#Questions"><i class="fa fa-question-circle" style="color:#db3a1e;"></i> <span id="questions-count-<%= node.id %>"><%= node.questions.count %> questions</span></a>
               </small></p>
-            <% else %>
-              <p><%= raw strip_tags(sanitize(RDiscount.new(node.body_preview).to_html)) if node.body %></p>
             <% end %>
             <p>
               <% if logged_in_as(['admin','moderator']) %><a class="btn btn-default" href="/moderate/spam/<%= node.id %>"><i class="fa fa-ban"></i> <%= t('notes._notes.spam') %></a><% end %>
@@ -56,12 +54,24 @@
           <% end %>
           <hr style="display:none;" class="bottom" />
         </div>
+	      
+	      
+	      
+	      
+	
 
       </div>
+	    <style>
+		    .content {
+    width: 100px;
+    margin-left: auto;
+    margin-bottom: 0;
+    margin-bottom: 30%;
+	    </style>
+		 
       <% unless @widget %><hr class="visible-xs visible-sm" /><% end %>
     <% if ((i+1)/4.0).to_i == ((i+1)/4.0) %>
     </div>
-    <% unless @widget %><hr class="visible-xs visible-sm grid" /><% end %>
     <div class="row">
     <% end %>
     <% end %>

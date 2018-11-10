@@ -7,6 +7,7 @@ class UniqueUsernameValidator < ActiveModel::Validator
 end
 
 class User < ActiveRecord::Base
+  include Utils
   self.table_name = 'rusers'
   alias_attribute :name, :username
 
@@ -52,7 +53,8 @@ class User < ActiveRecord::Base
 
   def new_contributor
     @uid = id
-    return "<span class = 'label label-success'><i>New Contributor</i></span>".html_safe if Node.where(:uid => @uid).length === 1
+    return "<a href='/tag/first-time-poster' class='label label-success'><i>new contributor</i></a>".html_safe if Node.where(:uid => @uid).length === 1
+   
   end
 
   def create_drupal_user
@@ -415,6 +417,22 @@ class User < ActiveRecord::Base
     end
   end
 
+  def generate_token
+    user_id_and_time = { :id => id, :timestamp => Time.now }
+    encrypt(user_id_and_time)
+  end
+
+  def validate_token(token)
+    decrypted_data = decrypt(token)
+    if id != decrypted_data[:id]
+      return false
+    elsif (Time.now - decrypted_data[:timestamp]) / 1.hour > 24.0
+      return false
+    else
+      return true
+    end
+  end
+
   private
 
   def map_openid_registration(registration)
@@ -453,5 +471,14 @@ class User < ActiveRecord::Base
       user.password_checker = hash[auth["provider"]]
       user.save!
     end
+  end
+  
+  def self.count_all_time_contributor
+    notes = Node.where(type: 'note', status: 1).pluck(:uid)
+    answers = Answer.pluck(:uid)
+    questions = Node.questions.where(status: 1).pluck(:uid)
+    comments = Comment.pluck(:uid)
+    revisions = Revision.where(status: 1).pluck(:uid)
+    contributors = (notes + answers + questions + comments + revisions).compact.uniq.length
   end
 end

@@ -14,7 +14,7 @@ module ApplicationHelper
 
   def emojify(content)
     if content.present?
-      content.to_str.gsub(/:([\w+-]+):/) do |match|
+      content.to_str.gsub(/:([\w+-]+):(?![^\[]*\])/) do |match|
         if emoji = Emoji.find_by_alias(Regexp.last_match(1))
           if emoji.raw
             emoji.raw
@@ -95,15 +95,6 @@ module ApplicationHelper
   # we should move this to the Node model:
   def render_map(lat, lon)
     render partial: 'map/leaflet', locals: { lat: lat, lon: lon }
-  end
-
-  # we should move this to the Comment model:
-  # returns the comment body which is to be shown in the comments section
-  def render_comment_body(comment)
-    raw RDiscount.new(
-      title_suggestion(comment),
-      :autolink
-    ).to_html
   end
 
   # we should move this to the Comment model:

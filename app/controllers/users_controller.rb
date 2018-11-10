@@ -43,6 +43,7 @@ class UsersController < ApplicationController
 
   def update
     @user = current_user
+    @user = User.find_by(username: params[:id]) if params[:id] && current_user && current_user.role == "admin"
     @user.attributes = user_params
     @user.save({}) do |result|
       if result
@@ -67,7 +68,7 @@ class UsersController < ApplicationController
     else
       @user = current_user
     end
-    if current_user && current_user.uid == @user.uid # || current_user.role == "admin"
+    if current_user && current_user.uid == @user.uid || current_user.role == "admin"
       render :template => "users/edit"
     else
       flash[:error] = I18n.t('users_controller.only_user_edit_profile', :user => @user.name).html_safe
@@ -333,6 +334,15 @@ class UsersController < ApplicationController
 
     flash[:notice] = "Settings updated successfully!"
     render js: "window.location.reload()"
+  end
+
+  def shortlink
+    @user = User.find_by_username(params[:username])
+    if @user
+      redirect_to @user.path
+    else
+      raise ActiveRecord::RecordNotFound.new(message: "Couldn't find user with username #{params[:id]}")
+    end
   end
 
   private

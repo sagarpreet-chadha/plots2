@@ -26,14 +26,14 @@
     var map_lat = <%= lat %> ;
     var map_lon = <%= lon %> ;
 
-    setupFullScreen(map<%= unique_id %>  , map_lat , map_lon) ;
+    // setupFullScreen(map<= unique_id >  , map_lat , map_lon) ;
     setupLEL(map<%= unique_id %> ) ;
 
     function onMapLoad(e){
-      var lat = <%= lat %> ;
-      var lon = <%= lon %> ;
+      var lat = <%= '%.2f' % lat %> ; // ensure format 0.00 (two decimal places)
+      var lon = <%= '%.2f' % lon %> ;
       var s = lat+","+lon ;
-      $.getJSON("/api/srch/locations?query="+s , function(data){
+      $.getJSON("/api/srch/taglocations?query="+s , function(data){
         if (!!data.items){
           for (i = 0; i < data.items.length ; i++) {
             var url = data.items[i].doc_url ;
