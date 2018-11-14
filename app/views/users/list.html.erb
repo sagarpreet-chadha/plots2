@@ -12,6 +12,7 @@
 </div>
 <div class="col-md-9">
   <h2><%= raw t('users.list.members_last_activity') %></h2>
+
   <%= render :partial => "map/peopleLeaflet" , locals: {people: true , lat:23 , lon: 4} %>
   <table class="table">
     <tr>
